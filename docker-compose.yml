@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  tron-stasher-bot:
+    # Имя сервиса, которое будет видно в Docker
+    container_name: tron_stasher_bot
+    # Указывает Docker'у собрать образ из текущей директории
+    build: .
+    # Подключает переменные окружения из файла .env в корень проекта
+    env_file:
+      - .env
+    # Политика перезапуска: всегда пытаться перезапустить, если контейнер остановился
+    restart: always
+    # Монтируем логи с хоста внутрь контейнера, чтобы видеть их на диске
+
+    volumes:
+      # Создает/использует файл scheduled_tasks.json в папке с docker-compose.yml 
+      # и монтирует его в рабочую директорию контейнера (/app).
+      - ./scheduled_tasks.json:/app/scheduled_tasks.json
+
+
+    deploy:
+      resources:
+        limits:
+          memory: 150M

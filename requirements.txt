@@ -1,0 +1,4 @@
+pytelegrambotapi==4.17.0
+tronpy==0.5.0
+requests==2.32.3
+base58==2.1.1
