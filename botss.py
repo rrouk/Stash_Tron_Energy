@@ -64,26 +64,26 @@ except Exception as e:
 # ================== Логирование ==================
 def log_error_crash(msg):
     # Используем standard logging (будет видно в Docker logs)
-    logging.error(f"❌ {msg}")
+    logging.error(f" {msg}")
     
-    log_message = f"[{datetime.now(TZ_MOSCOW).strftime('%Y-%m-%d %H:%M:%S')}] ❌ {msg}"
+    log_message = f"[{datetime.now(TZ_MOSCOW).strftime('%Y-%m-%d %H:%M:%S')}]  \n{msg}"
     # Отправка администраторам
     for admin_id in ADMIN_IDS:
         try:
-            bot.send_message(admin_id, log_message)
+            bot.send_message(admin_id, log_message, parse_mode='Markdown', disable_web_page_preview=True)
         except telebot.apihelper.ApiTelegramException as e:
             # Используем standard logging для ошибки отправки
             logging.info(f"[ERROR] Could not send message to {admin_id}: {e}")
 
 def log_work(msg):
     # Используем standard logging (будет видно в Docker logs)
-    logging.info(f"✅ {msg}")
+    logging.info(f" {msg}")
     
-    log_message = f"[{datetime.now(TZ_MOSCOW).strftime('%Y-%m-%d %H:%M:%S')}] ✅ {msg}"
+    log_message = f"[{datetime.now(TZ_MOSCOW).strftime('%Y-%m-%d %H:%M:%S')}]  \n{msg}"
     # Отправка администраторам
     for admin_id in ADMIN_IDS:
         try:
-            bot.send_message(admin_id, log_message)
+            bot.send_message(admin_id, log_message, parse_mode='Markdown', disable_web_page_preview=True)
         except telebot.apihelper.ApiTelegramException as e:
             # Используем standard logging для ошибки отправки
             logging.info(f"[ERROR] Could not send message to {admin_id}: {e}")
@@ -146,7 +146,7 @@ def create_delegate_energy_txid(addressEN, receiver_address_delegate_my, delegat
                .permission_id(PERM_ID).build().sign(priv_key_my))
         response = txn.broadcast().wait()
         if 'id' in response:
-            log_work(f"Энергия делегирована на {receiver_address_delegate_my} в размере {delegate_my_trx:.2f} TRX")
+            log_work(f"Энергия делегирована на {receiver_address_delegate_my} в размере {delegate_my_trx:,.2f} TRX")
             return txn.txid, True
         else:
             log_error_crash(f"Ошибка делегации: {response}")
@@ -164,7 +164,7 @@ def create_undelegate_energy_txid(addressEN, receiver_address_delegate_my, undel
                .permission_id(PERM_ID).build().sign(priv_key_my))
         response = txn.broadcast().wait()
         if 'id' in response:
-            log_work(f"Отозвана делегация {undelegate_trx:.2f} TRX с {receiver_address_delegate_my}")
+            log_work(f"Отозвана делегация {undelegate_trx:,.2f} TRX с {receiver_address_delegate_my}")
             return txn.txid, True
         else:
             log_error_crash(f"Ошибка отзыва делегации: {response}")
@@ -230,12 +230,12 @@ def stash_energy(message):
     txid, ok = create_delegate_energy_txid(main_wallet, stashing_target, trx_to_delegate)
 
     if ok:
+        txid_link = "https://tronscan.org/#/transaction/" + txid
         bot.send_message(message.chat.id, 
                          f"✅ Спрятано!\n\n"
-                         f"Делегировано: {trx_to_delegate:.2f} TRX\n"
-                         f"На адрес: `{stashing_target}`\n"
-                         f"TXID: `{txid}`",
-                         parse_mode='Markdown')
+                         f"Делегировано: {trx_to_delegate:,.2f} TRX\n"
+                         f"[Ссылка на транзакцию]({txid_link})",
+                         parse_mode='Markdown', disable_web_page_preview=True)
     else:
         bot.send_message(message.chat.id, "❌ Произошла ошибка при делегировании. Проверьте логи.")
 
@@ -282,17 +282,17 @@ def reclaim_energy(message):
         bot.send_message(message.chat.id, "❌ Обнаружен нулевой объем делегации на Адрес-Тайник.")
         return
 
-    bot.send_message(message.chat.id, f"🔄 Запускаю отзыв делегации: {amount_in_trx} TRX с `{stashing_target}`...", parse_mode='Markdown')
+    bot.send_message(message.chat.id, f"🔄 Запускаю отзыв делегации: {amount_in_trx:,.2f} TRX с `{stashing_target}`...", parse_mode='Markdown')
     
     txid, ok = create_undelegate_energy_txid(main_wallet, stashing_target, amount_in_trx)
 
     if ok:
+        txid_link = "https://tronscan.org/#/transaction/" + txid
         bot.send_message(message.chat.id, 
                          f"✅ Возвращено!\n\n"
-                         f"Отозвано: {amount_in_trx} TRX\n"
-                         f"С адреса: `{stashing_target}`\n"
-                         f"TXID: `{txid}`",
-                         parse_mode='Markdown')
+                         f"Отозвано: {amount_in_trx:,.2f} TRX\n"
+                         f"[Ссылка на транзакцию]({txid_link})",
+                         parse_mode='Markdown', disable_web_page_preview=True)
     else:
         bot.send_message(message.chat.id, "❌ Произошла ошибка при отзыве делегации. Проверьте логи.")
 
@@ -559,9 +559,12 @@ def scheduler_worker():
                             trx_to_delegate = int(trx_deleg_max_sun / 1_000_000)
                             txid, ok = create_delegate_energy_txid(main_wallet, stashing_target, trx_to_delegate)
                             if ok:
+                                txid_link = "https://tronscan.org/#/transaction/" + txid
                                 task["delegated"] = True
                                 task["txid_delegate"] = txid
-                                log_work(f"✅ Отложенное делегирование выполнено: {trx_to_delegate} TRX")
+                                log_work(f"✅ Отложенное делегирование выполнено!\n"
+                                         f"Делегировано: {trx_to_delegate:,.2f} TRX\n"
+                                         f"[Ссылка на транзакцию]({txid_link})")
                             else:
                                 log_error_crash("❌ Отложенное делегирование не удалось!")
                         else:
@@ -585,9 +588,12 @@ def scheduler_worker():
                             if amount_in_trx > 0:
                                 txid, ok = create_undelegate_energy_txid(main_wallet, stashing_target, amount_in_trx)
                                 if ok:
+                                    txid_link = "https://tronscan.org/#/transaction/" + txid
                                     task["returned"] = True
                                     task["txid_return"] = txid
-                                    log_work(f"✅ Отложенный возврат выполнен: {amount_in_trx} TRX")
+                                    log_work(f"✅ Отложенный возврат выполнен!\n"
+                                             f"Делегировано: {trx_to_delegate:,.2f} TRX\n"
+                                             f"[Ссылка на транзакцию]({txid_link})")
                                 else:
                                     log_error_crash("❌ Отложенный возврат не удался!")
                             else:
