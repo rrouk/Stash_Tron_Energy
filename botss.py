@@ -185,13 +185,22 @@ def admin_only(func):
 
 # ================== Клавиатура снизу ==================
 def bottom_keyboard():
-    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True, one_time_keyboard=False)
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
     markup.add(
-        types.KeyboardButton("Спрятать 📤"),
-        types.KeyboardButton("Вернуть 📥"),
+        types.KeyboardButton("РеалТайм ⚡"),
         types.KeyboardButton("Отложить ⏳"),
         types.KeyboardButton("Показать Отложки 📋"),
         types.KeyboardButton("Удалить Отложки ❌")
+    )
+    return markup
+
+
+def realtime_keyboard():
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
+    markup.add(
+        types.KeyboardButton("Спрятать 📤"),
+        types.KeyboardButton("Вернуть 📥"),
+        types.KeyboardButton("⬅️ Назад")
     )
     return markup
 
@@ -298,7 +307,27 @@ def reclaim_energy(message):
 
 
 
+# ================== Логика "Реалтайм"  ==================
+@bot.message_handler(func=lambda m: m.text=="РеалТайм ⚡")
+@admin_only
+def show_realtime_actions(message):
+    bot.send_message(
+        message.chat.id,
+        "⚠️ **Режим ручного управления активен.** Используйте эти кнопки с осторожностью.",
+        reply_markup=realtime_keyboard(),
+        parse_mode='Markdown'
+    )
 
+
+# ================== Логика "Назад" ==================
+@bot.message_handler(func=lambda m: m.text=="⬅️ Назад")
+@admin_only
+def go_back_to_main(message):
+    bot.send_message(
+        message.chat.id,
+        "🤖 Возврат к основному меню.",
+        reply_markup=bottom_keyboard()
+    )
 
 
 # Функции обработки очереди
@@ -592,7 +621,7 @@ def scheduler_worker():
                                     task["returned"] = True
                                     task["txid_return"] = txid
                                     log_work(f"✅ Отложенный возврат выполнен!\n"
-                                             f"Делегировано: {trx_to_delegate:,.2f} TRX\n"
+                                             f"Анделегировано: {trx_to_delegate:,.2f} TRX\n"
                                              f"[Ссылка на транзакцию]({txid_link})")
                                 else:
                                     log_error_crash("❌ Отложенный возврат не удался!")
