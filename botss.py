@@ -15,14 +15,17 @@ from datetime import datetime, timedelta, timezone
 zone_time = int(os.getenv("zone_time"))
 TZ_MOSCOW = timezone(timedelta(hours=zone_time))
 
-
+last_check_time = datetime.min.replace(tzinfo=TZ_MOSCOW)
+CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES"))
 
 # Настройка логирования в начале файла (должна быть)
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(processName)s - %(name)s - %(levelname)s - %(message)s')
 
 path_json_otl = "/app/scheduled_tasks.json"
-
+SETTINGS_PATH = "/app/bot_settings.json"
+# Инициализация флага (фактическое значение будет загружено из файла)
+MONITORING_ENABLED = False
 
 
 # ================== Настройки Telegram ==================
@@ -185,15 +188,19 @@ def admin_only(func):
 
 # ================== Клавиатура снизу ==================
 def bottom_keyboard():
+    # Флаг MONITORING_ENABLED должен быть доступен здесь как глобальный
+    global MONITORING_ENABLED
+    status_emoji = '🟢' if MONITORING_ENABLED else '🔴'
+    
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
     markup.add(
         types.KeyboardButton("РеалТайм ⚡"),
         types.KeyboardButton("Отложить ⏳"),
         types.KeyboardButton("Показать Отложки 📋"),
-        types.KeyboardButton("Удалить Отложки ❌")
+        types.KeyboardButton("Удалить Отложки ❌"),
+        types.KeyboardButton(f"Автослежение {status_emoji} (Вкл/Выкл)") # Новая кнопка
     )
     return markup
-
 
 def realtime_keyboard():
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
@@ -203,6 +210,59 @@ def realtime_keyboard():
         types.KeyboardButton("⬅️ Назад")
     )
     return markup
+
+
+
+# ====================== Работа с файлом настроек ===================
+def save_settings():
+    """Сохраняет текущее состояние слежения в файл."""
+    settings = {"monitoring_enabled": MONITORING_ENABLED}
+    try:
+        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2)
+    except Exception as e:
+        logging.error(f"❌ Ошибка: Не удалось сохранить настройки: {e}")
+
+def load_settings():
+    """Загружает состояние слежения из файла при старте."""
+    global MONITORING_ENABLED
+    try:
+        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+            # Загружаем значение, по умолчанию False, если ключ отсутствует
+            MONITORING_ENABLED = settings.get("monitoring_enabled", False)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Если файл не найден или поврежден, устанавливаем по умолчанию и сохраняем
+        MONITORING_ENABLED = False
+        save_settings()
+
+
+
+
+# =========================== Переключение кнопки слежения ===================
+@bot.message_handler(func=lambda m: m.text.startswith("Автослежение"))
+@admin_only
+def toggle_monitoring(message):
+    global MONITORING_ENABLED # Работаем с глобальным флагом!
+    
+    # 1. Переключаем состояние
+    MONITORING_ENABLED = not MONITORING_ENABLED
+    
+    # 2. Сохраняем состояние
+    save_settings()
+    
+    status_text = "Включено 🟢" if MONITORING_ENABLED else "Выключено 🔴"
+    log_work(f"Автоматическое слежение переключено в состояние: {status_text}")
+    
+    bot.send_message(
+        message.chat.id, 
+        f"Автоматическое слежение теперь: **{status_text}**.", 
+        reply_markup=bottom_keyboard(), # Обновляем клавиатуру, чтобы показать новый статус
+        parse_mode='Markdown'
+    )
+
+
+
 
 # ================== Telegram обработчики ==================
 @bot.message_handler(commands=["start"])
@@ -341,6 +401,7 @@ def load_scheduled_tasks():
                     task["schedule_time"] = datetime.fromisoformat(task["schedule_time"])
                 if isinstance(task["return_time"], str):
                     task["return_time"] = datetime.fromisoformat(task["return_time"])
+                task.setdefault("txid_delegate_source", None)
             return data
     except (FileNotFoundError, json.JSONDecodeError):
         return []
@@ -367,7 +428,10 @@ def delayed_stash_start(message):
         "⏳ Введите дату и время делегирования в формате:\n`YYYY-MM-DD HH:MM`\n(время будет интерпретироваться как UTC+3)",
         parse_mode="Markdown"
     )
+    # Регистрируем переход на step1 для ввода времени
     bot.register_next_step_handler(message, delayed_stash_step1)
+
+
 
 def delayed_stash_step1(message):
     try:
@@ -376,43 +440,93 @@ def delayed_stash_step1(message):
         if schedule_time <= datetime.now(TZ_MOSCOW):
             bot.send_message(message.chat.id, "❌ Время должно быть в будущем!")
             return
+            
         bot.send_message(
             message.chat.id,
-            "⏳ Введите длительность удержания (в минутах, целое число, например: `6`):"
+            "⏳ Введите длительность удержания (в минутах, целое число, например: `6`):",
+            parse_mode="Markdown"
         )
-        bot.register_next_step_handler(message, delayed_stash_step2, schedule_time)
+        # Регистрируем переход на step2, передавая schedule_time
+        bot.register_next_step_handler(message, delayed_stash_step2, schedule_time) 
+        
     except ValueError:
         bot.send_message(message.chat.id, "❌ Неверный формат даты. Попробуйте снова.")
         return
+
 
 def delayed_stash_step2(message, schedule_time):
     try:
         hold_minutes = int(message.text.strip())
         if hold_minutes <= 0:
             raise ValueError
+            
+        # Рассчитываем время возврата
         return_time = schedule_time + timedelta(minutes=hold_minutes)
-
-        tasks = load_scheduled_tasks()
-        tasks.append({
-            "schedule_time": schedule_time,
-            "return_time": return_time,
-            "executed": False,
-            "delegated": False,
-            "returned": False,
-            "txid_delegate": None,
-            "txid_return": None
-        })
-        save_scheduled_tasks(tasks)
 
         bot.send_message(
             message.chat.id,
-            f"✅ Задача запланирована!\n"
-            f"Делегировать: {schedule_time.strftime('%Y-%m-%d %H:%M')} (UTC+3)\n"
-            f"Вернуть через: {hold_minutes} мин → {return_time.strftime('%Y-%m-%d %H:%M')} (UTC+3)"
+            "🔗 Введите **TXID** входящей делегации (необязательно) или отправьте `-` (дефис), чтобы пропустить.",
+            parse_mode="Markdown"
         )
+        # Регистрируем переход на step3, передавая ВСЕ необходимые данные
+        bot.register_next_step_handler(message, delayed_stash_step3, schedule_time, return_time, hold_minutes) 
+
     except ValueError:
         bot.send_message(message.chat.id, "❌ Введите положительное целое число минут (например: 30, 90, 120).")
         return
+
+
+
+# Принимает 4 аргумента: message, schedule_time, return_time, hold_minutes
+def delayed_stash_step3(message, schedule_time, return_time, hold_minutes): 
+    
+    # 1. Обрабатываем ввод TXID
+    tx_input = message.text.strip()
+    txid_delegate_source = None
+    if tx_input != '-':
+        txid_delegate_source = tx_input
+
+    # 2. Сохраняем задачу
+    tasks = load_scheduled_tasks()
+    tasks.append({
+        "schedule_time": schedule_time,
+        "return_time": return_time,
+        "executed": False,
+        "delegated": False,
+        "returned": False,
+        "txid_delegate": None,
+        "txid_return": None,
+        "txid_delegate_source": txid_delegate_source # Сохраняем TXID или None
+    })
+    save_scheduled_tasks(tasks)
+
+    # 3. Отправляем подтверждение
+    txid_msg = ""
+    txid_link_formatted = ""
+
+    # Добавляем проверку, чтобы убедиться, что txid_delegate_source не None
+    if txid_delegate_source:
+        txid_msg = f"TXID источника: `{txid_delegate_source}`\n"
+        # Эту строку нужно было проверить!
+        txid_link = "https://tronscan.org/#/transaction/" + txid_delegate_source
+        txid_link_formatted = f"Ссылка на транзакцию: [TXID]({txid_link})\n"
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Задача запланирована!\n"
+        f"{txid_msg}"
+        f"{txid_link_formatted}" # Используем отформатированную ссылку или пустую строку
+        f"Делегировать: {schedule_time.strftime('%Y-%m-%d %H:%M')} (UTC+3)\n"
+        f"Вернуть через: {hold_minutes} мин → {return_time.strftime('%Y-%m-%d %H:%M')} (UTC+3)",
+        parse_mode='Markdown', disable_web_page_preview=True
+    )
+
+
+
+
+
+
+
 
 
 
@@ -433,7 +547,8 @@ def _send_tasks_list_message(message):
     for i, task in enumerate(active_tasks):
         schedule_time_str = task["schedule_time"].strftime('%Y-%m-%d %H:%M') if isinstance(task["schedule_time"], datetime) else str(task["schedule_time"])
         return_time_str = task["return_time"].strftime('%Y-%m-%d %H:%M') if isinstance(task["return_time"], datetime) else str(task["return_time"])
-        
+        txid_value = task.get("txid_delegate_source", "N/A")
+
         status = ""
         if task.get("delegated") and not task.get("returned"):
             status = " (Спрятано, ждет возврата)"
@@ -444,6 +559,7 @@ def _send_tasks_list_message(message):
         
         output += (
             f"**Задача #{i+1}**{status}\n"
+            f"**ID транзакции (TXID):** `{txid_value}`\n"
             f"Делегировать в: `{schedule_time_str}`\n"
             f"Вернуть в: `{return_time_str}`\n"
             "----\n"
@@ -566,13 +682,120 @@ def callback_inline(call):
 
 
 
+# ================== Новая функция отслеживания ==================
+def check_incoming_delegations():
+    """Проверяет последние транзакции на предмет входящих делегаций энергии."""
+    global last_check_time # Обязательно указываем, что работаем с глобальной переменной
+    
+    now = datetime.now(TZ_MOSCOW)
+    
+    # ПРОВЕРКА ИНТЕРВАЛА
+    if now - last_check_time < timedelta(minutes=CHECK_INTERVAL_MINUTES):
+        return
+
+    logging.info(f"🔍 Запущена проверка входящих делегаций (интервал: {CHECK_INTERVAL_MINUTES} мин)...")
+    last_check_time = now # Обновляем время перед началом выполнения
+
+
+    
+    # 1. Запрос истории транзакций на TronScan API
+    # type=0 - все транзакции, limit=50 - последние 50
+    # Нам нужны только определенные типы (DelegateResource)
+    url = f"https://apilist.tronscanapi.com/api/transaction?sort=-timestamp&count=true&limit=50&start=0&address={main_wallet}"
+    headers = {"TRON-PRO-API-KEY": api_key_tronscan}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            raise Exception(f"TronScan API Error: {response.status_code}, {response.text}")
+        
+        data = response.json()
+        transactions = data.get("data", [])
+        
+    except Exception as e:
+        log_error_crash(f"Ошибка запроса истории транзакций к TronScan: {e}")
+        return
+
+    # 2. Обработка транзакций
+    new_tasks_added = False
+    tasks = load_scheduled_tasks()
+    
+    for tx in transactions:
+        # Ищем транзакции типа DelegateResource
+        if tx.get("contractType") == 57:  # 43 - DelegateResourceContract
+            contract_data = tx.get("contractData", {})
+            
+            # Проверяем, что это входящая делегация на main_wallet
+            # и делегируется ЭНЕРГИЯ, а не Bandwidth
+            if (contract_data.get("receiver_address") == main_wallet and contract_data.get("resource") == "ENERGY"):
+                
+                # Получаем время транзакции (timestamp в мс)
+                timestamp_ms = tx.get("timestamp")
+                tx_time = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=TZ_MOSCOW)
+                
+                # Идентификатор транзакции для предотвращения повторной обработки
+                tx_id = tx.get("hash")
+                
+                # Проверяем, не обработана ли уже эта транзакция
+                # (ищем txid в списке выполненных/запланированных)
+                if any(t.get("txid_delegate_source") == tx_id for t in tasks):
+                    continue # Пропускаем, уже добавлено
+
+                # 3. Вычисляем время отложенной задачи
+                # 58 минут после времени транзакции
+                TIME_BUY_ENERGY = int(os.getenv("TIME_BUY_ENERGY"))
+                schedule_time = tx_time + timedelta(minutes=TIME_BUY_ENERGY)
+                
+                # 4. Создаем задачу на отложенное делегирование (Спрятать)
+                # Держим 5 минут (можно настроить)
+                hold_minutes = int(os.getenv("AUTO_HOLD_MINUTES"))
+                return_time = schedule_time + timedelta(minutes=hold_minutes)
+                txid_link = "https://tronscan.org/#/transaction/" + tx_id
+                # Проверяем, что время еще в будущем или прошло не более 30 секунд
+                # (для обработки почти реального времени, если вдруг пропустили)
+                now = datetime.now(TZ_MOSCOW)
+                if schedule_time < now and (now - schedule_time).total_seconds() > 30:
+                     logging.info(f"⚠️ Пропущено: Входящая делегация [TXID]({txid_link}) слишком старая. Время делегирования `{tx_time.strftime('%Y-%m-%d %H:%M:%S')}` уже прошло.")
+                     continue
+                
+                tasks.append({
+                    "schedule_time": schedule_time,
+                    "return_time": return_time,
+                    "executed": False,
+                    "delegated": False,
+                    "returned": False,
+                    "txid_delegate": None,
+                    "txid_return": None,
+                    "txid_delegate_source": tx_id # Новый ключ для отслеживания
+                })
+                new_tasks_added = True
+                
+                # Отправка уведомления администраторам
+                log_work(
+                    f"✨ **Новая входящая делегация обнаружена!**\n"
+                    f"TXID: `{tx_id}`\n"
+                    f"Ссылка на транзакцию: [TXID]({txid_link})\n"
+                    f"Время транзакции: `{tx_time.strftime('%Y-%m-%d %H:%M:%S')}` (UTC+3)\n"
+                    f"Спрятать в: `{schedule_time.strftime('%Y-%m-%d %H:%M:%S')}` (UTC+3)\n"
+                    f"Вернуть в: `{return_time.strftime('%Y-%m-%d %H:%M:%S')}` (UTC+3)"
+                )
+                
+    # 5. Сохранение задач
+    if new_tasks_added:
+        save_scheduled_tasks(tasks)
+
 
 
 
 
 def scheduler_worker():
+    global MONITORING_ENABLED
     while True:
         try:
+            # 💡 ПРОВЕРКА ФЛАГА ПЕРЕД ВЫПОЛНЕНИЕМ
+            if MONITORING_ENABLED:
+                check_incoming_delegations() # проверяем, есть ли входящие делегации
+
             now = datetime.now(TZ_MOSCOW)
             tasks = load_scheduled_tasks()
             updated = False
@@ -646,7 +869,7 @@ def scheduler_worker():
 
 
 
-
+load_settings() # загружаем кнопку настроек слежения
 scheduler_thread = threading.Thread(target=scheduler_worker, daemon=True)
 scheduler_thread.start()
 

@@ -17,6 +17,7 @@ services:
       # Создает/использует файл scheduled_tasks.json в папке с docker-compose.yml 
       # и монтирует его в рабочую директорию контейнера (/app).
       - ./scheduled_tasks.json:/app/scheduled_tasks.json
+      - ./bot_settings.json:/app/bot_settings.json
 
 
     deploy:

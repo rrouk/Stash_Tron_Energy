@@ -1,1 +1,202 @@
-[]
+[
+  {
+    "schedule_time": "2025-11-06T19:07:00+03:00",
+    "return_time": "2025-11-06T19:17:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "53334e46420088e37499281aebde06c397630559ee18ce9a9f3e57d7bed7b8b2",
+    "txid_return": "066f68e322015b2b535bf7a668f43315efcde89ab0b8a19e96187d55664c2b1c",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-07T07:44:00+03:00",
+    "return_time": "2025-11-07T07:49:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "fc1f646a20002e5937ee3b77c80ba62698f9cefc0dd26a0fa7eb47fcb8b5519a",
+    "txid_return": "5eaff6134a3947898b87f6d70244e058f491d7cde463dd33d0074dcaeb9762e5",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-07T13:26:00+03:00",
+    "return_time": "2025-11-07T13:32:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "52475952c3cd9d78876ce10850f1e02e20dce2d2aaa7f16e76722397d2248519",
+    "txid_return": "699ddd94cb3a8a2f26fb51abaf654ae68fd860c349e4ef4948b90fed8e8d6a0a",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-07T18:43:00+03:00",
+    "return_time": "2025-11-07T18:49:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "54de10cfde2cb3bd5bb899347a040c9820d538349e8877ba1184d21292374fc9",
+    "txid_return": "78da337666a1b05d9fae7c610f19380f33a31228da6894726d8dd704f89dc0db",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-07T22:39:00+03:00",
+    "return_time": "2025-11-07T22:49:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "5d76a67067b967727911f921e3410bdcb7d7c14abd9d17e1d79fad5d4d4ffbae",
+    "txid_return": "6566c493fb7bec3c38c82de3ead185cc9f938b0e0c7346861911ca12e6d2ede5",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-08T05:17:00+03:00",
+    "return_time": "2025-11-08T05:18:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "30bd9b73d14fb67bd0ef10b00b717ab6996e5826a455be59dad91d9581ef70ef",
+    "txid_return": "267ca67e17237b2f6057514d8e85a99655f280d3b93878318625c901427ea831",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-08T16:52:00+03:00",
+    "return_time": "2025-11-08T16:57:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "2aabba10af0f0d472250b0bea1643bd1e13fc5630c59fdc7e585c11db30a738b",
+    "txid_return": "774255ab59937329b00ba48f10efb399c31ee85be9783ae06138cd495286a756",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-08T21:44:00+03:00",
+    "return_time": "2025-11-08T21:51:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "84e7db4a9a17e654f2cb0c83225d6e3ff3da3dc590bc854258bd59b8830e7a7c",
+    "txid_return": "c9c672f27c04a7f7df9727b204457c79c2f256c46091c404212ae7c2cc77e733",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-09T11:37:00+03:00",
+    "return_time": "2025-11-09T11:43:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "a722fbf4ee60b1cc3e3e396d48c33440cfaa5a4f87ec3fc1eb238d92108a1bdb",
+    "txid_return": "ec724b0086ff42fcc4961c6867f9235d7513c0205723315f925fd8a8e173102b",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-09T15:54:00+03:00",
+    "return_time": "2025-11-09T15:59:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "25541f28ec3a0b6f94c5d4bd280bca409a55b821da149ab127b903217391e188",
+    "txid_return": "df13258a690438b2979d951d2d73f601ec0fadbd9cec49ea3a2054c4298bae4a",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-15T14:34:00+03:00",
+    "return_time": "2025-11-15T14:39:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "57235b49cea949c24b3b59dbf6e58cbb953d3f6c328e632454b88915f7c68a0f",
+    "txid_return": "133414d508be14ffbdb5edcbeb02f740029b6db01922d509277cc82377d7aec9",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-15T16:54:00+03:00",
+    "return_time": "2025-11-15T16:59:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "8ca4fb43b9057ed9147e15df0e054bd2e1555dff34e4dd6d5166869dd8ccafbc",
+    "txid_return": "1e0a5f02686c860d31326114166ab18b4d73780df0451c6b0feccf504ba0d6a8",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-15T18:07:00+03:00",
+    "return_time": "2025-11-15T18:12:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "6297c637f19507545e33529a75506187c0fc1ee0e438bd1fdcf77ef1834d714e",
+    "txid_return": "3e216d1e8bbebcc6a6e760260d358e0a59e010595560812fd3a397cf476c78ac",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-15T18:38:00+03:00",
+    "return_time": "2025-11-15T18:43:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "30f30e35818b6dcbda1f7faddc0e9f3e5e31039a03233aa0a170884ecc0c5894",
+    "txid_return": "0a26144ea5caf36f50ec3ee2c12178ec88059a427cd4549980ac0dad19e29a1c",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-15T19:48:00+03:00",
+    "return_time": "2025-11-15T19:53:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "5f571a8ada196b399b0aacf73826aca99603f87124b2617b1f46629f0a49ddff",
+    "txid_return": "cdfea82968b140a658d82e7b9cc28f3dacacf49b0bf47a74de5c7b2ffc50929a",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-15T20:56:00+03:00",
+    "return_time": "2025-11-15T21:01:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "4e05beec2adbe0d1a471ce85a46ec88e2bb6671e7bb2aef94ce8c89b85e43f5b",
+    "txid_return": "d5523dbad93aa5b904d05cab52a66847ecef4ce0e40fbc803e207dee263e0a30",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-15T21:57:00+03:00",
+    "return_time": "2025-11-15T22:02:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "ffe1b51ac6468abc0db4c0319b79ae24e490378d7648082add957a022fc0680e",
+    "txid_return": "93c01be3a213ee83f69f185f9bf6c4318b045434fe5a6cf96ad68e314eddf823",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-15T23:04:00+03:00",
+    "return_time": "2025-11-15T23:09:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "ff15b4276e5ee2e6f03516f1bdbbc1acfa880e74690a331e4820e09be013028e",
+    "txid_return": "664d81134bbc90287bf18d737685264b8787b57e272a9667cd1a5fae4827dd94",
+    "txid_delegate_source": null
+  },
+  {
+    "schedule_time": "2025-11-16T14:45:15+03:00",
+    "return_time": "2025-11-16T14:51:15+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "ef60930e4512620cd24f44ff3df3a9f4bd4ad71aa39808d1571576a26892ef5b",
+    "txid_return": "8791f1c6e37487827fd1a4ac4816e1904d4ed35310915795e90d90797b7be7c7",
+    "txid_delegate_source": "c4e14b6fecf93f74e4c1e7dd2d9e6327e76a0ee2f16a7854cd0cb0463d338d4b"
+  },
+  {
+    "schedule_time": "2025-11-16T14:16:00+03:00",
+    "return_time": "2025-11-16T14:22:00+03:00",
+    "executed": true,
+    "delegated": true,
+    "returned": true,
+    "txid_delegate": "eb37a233a1e953d765af8200e23255aaeb839b81ec19307a4d34dc43969b6da4",
+    "txid_return": "153a72417e0d864834059a32d87adbc85829c536a35b0881b7b2746df739d3b2",
+    "txid_delegate_source": "46087a3b4713c808342c1e9d1fbe5cba63ba6c8517af3775241deccf1dc71807"
+  }
+]
