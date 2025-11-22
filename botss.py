@@ -17,8 +17,9 @@ TZ_MOSCOW = timezone(timedelta(hours=zone_time))
 last_check_time = datetime.min.replace(tzinfo=TZ_MOSCOW)
 
 # Настройка логирования в начале файла (должна быть)
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(processName)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.error, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.warning, format='%(asctime)s - %(levelname)s - %(message)s')
 
 path_json_otl = "/app/scheduled_tasks.json"
 SETTINGS_PATH = "/app/bot_settings.json"
