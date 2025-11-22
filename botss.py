@@ -7,9 +7,12 @@ from tronpy import Tron
 from tronpy.providers import HTTPProvider
 from tronpy.keys import PrivateKey
 import os
+import re
 import logging
 import json
 from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Tuple
+
 
 # Часовой пояс UTC+3
 zone_time = int(os.getenv("zone_time"))
@@ -455,6 +458,17 @@ def save_scheduled_tasks(tasks):
 
 
 
+#----------------------------------------- обрезка символов -------------------------------------------------------------------------
+def escape_markdown_v2(text: str) -> str:
+    """Экранирует спецсимволы для MarkdownV2 в Telegram"""
+    return re.sub(r'([_.()\[\]~>#+\-=|{}!])', r'\\\1', str(text))
+#-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
 #------------------------------------------ Обработчик кнопки отложить --------------------------------------------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "Отложить ⏳")
 @admin_only
@@ -554,46 +568,111 @@ def delayed_stash_step3(message, schedule_time, return_time, hold_minutes):
         f"Вернуть через: {hold_minutes} мин → {return_time.strftime('%Y-%m-%d %H:%M')} (UTC+3)",
         parse_mode='Markdown', disable_web_page_preview=True
     )
+#-----------------------------------------------------------------------------------------------------------------------
 
 
+
+
+#----------------------------------------- Обработчик кнопки Показать отложки --------------------------------------------------
 def _send_tasks_list_message(message):
     tasks = load_scheduled_tasks()
-    
-    # 1. Отфильтровываем все невыполненные задачи
     active_tasks = [t for t in tasks if not t.get("executed")]
-    
+
     if not active_tasks:
         bot.send_message(message.chat.id, "✅ Список активных отложенных задач пуст.")
         return
-        
-    output = "📜 **Активные Отложенные Задачи (UTC+3):**\n\n"
+
+    # === 1. Формируем список задач ===
+    output = "📜 **Активные отложенные задачи \\(UTC\\+3\\):**\n\n"
     markup = types.InlineKeyboardMarkup()
-    
-    # i будет соответствовать индексу в списке active_tasks
+
     for i, task in enumerate(active_tasks):
-        schedule_time_str = task["schedule_time"].strftime('%Y-%m-%d %H:%M') if isinstance(task["schedule_time"], datetime) else str(task["schedule_time"])
-        return_time_str = task["return_time"].strftime('%Y-%m-%d %H:%M') if isinstance(task["return_time"], datetime) else str(task["return_time"])
-        txid_value = task.get("txid_delegate_source", "N/A")
+        # Преобразуем время в строки (если ещё datetime)
+        st = task["schedule_time"]
+        rt = task["return_time"]
+        schedule_time_str = st.strftime('%Y\\-%m\\-%d %H:%M') if isinstance(st, datetime) else escape_markdown_v2(st)
+        return_time_str = rt.strftime('%Y\\-%m\\-%d %H:%M') if isinstance(rt, datetime) else escape_markdown_v2(rt)
+        txid_value = escape_markdown_v2(task.get("txid_delegate_source", "N/A") or "N/A")
 
         status = ""
         if task.get("delegated") and not task.get("returned"):
-            status = " (Спрятано, ждет возврата)"
+            status = " \\(Спрятано, ждёт возврата\\)"
         elif not task.get("delegated"):
-            status = " (Ждет делегирования)"
-        
+            status = " \\(Ждёт делегирования\\)"
+
         markup.add(types.InlineKeyboardButton(f"❌ Удалить задачу #{i+1}", callback_data=f"delete_task_{i}"))
-        
+
         output += (
-            f"**Задача #{i+1}**{status}\n"
+            f"**Задача \\#{i+1}**{status}\n"
             f"**TXID:** `{txid_value}`\n"
             f"Делегировать в: `{schedule_time_str}`\n"
             f"Вернуть в: `{return_time_str}`\n"
-            "----\n"
+            "――――――――――――――\n"
         )
-        
+
+    # === 2. Формируем блок кластеров ===
+    now = datetime.now(TZ_MOSCOW)
+    clusters = group_tasks_into_clusters(active_tasks, max_gap_minutes=SLICE_MINUTES)
+    cluster_info = []
+    for cluster in clusters:
+        c_start = min(t["schedule_time"] for t in cluster)
+        c_end = max(t["return_time"] for t in cluster)
+        delegated_in_cluster = any(t["delegated"] and not t["returned"] for t in cluster)
+        cluster_info.append({
+            "tasks": cluster,
+            "start": c_start,
+            "end": c_end,
+            "delegated": delegated_in_cluster,
+        })
+
+    if cluster_info:
+        output += "\n📦 **Кластеры задач \\(SLICE\\=5 мин\\):**\n\n"
+        for i, c in enumerate(cluster_info, 1):
+            start_str = c["start"].strftime('%H:%M') if isinstance(c["start"], datetime) else str(c["start"])
+            end_str = c["end"].strftime('%H:%M') if isinstance(c["end"], datetime) else str(c["end"])
+            task_nos = ', '.join(f"\\#{active_tasks.index(t)+1}" for t in c["tasks"])
+
+            # Определяем статус эмодзи + текст
+            if c["start"] <= now < c["end"]:
+                if not c["delegated"]:
+                    status_icon = "🟢"
+                    status_text = "активен, ждёт делегации"
+                else:
+                    status_icon = "🟠"
+                    status_text = "активен, делегирован"
+            elif now >= c["end"] and c["delegated"]:
+                status_icon = "🔴"
+                status_text = "завершён, ждёт возврата"
+            else:
+                status_icon = "⚪"
+                status_text = "ожидает"
+
+            output += (
+                f"{status_icon} **Кластер {i}**: `{start_str}–{end_str}`\n"
+                f"Задачи: {task_nos}\n"
+                f"Статус: _{status_text}_\n"
+                "――――――――――――――\n"
+            )
+
+    # === 3. Кнопки ===
     markup.add(types.InlineKeyboardButton("🗑️ Удалить ВСЕ активные", callback_data="confirm_delete_all_tasks"))
 
-    bot.send_message(message.chat.id, output, reply_markup=markup, parse_mode='Markdown')
+    # === 4. Отправка ===
+    try:
+        bot.send_message(
+            message.chat.id,
+            output,
+            reply_markup=markup,
+            parse_mode='MarkdownV2'
+        )
+    except Exception as e:
+        # На случай, если Markdown сломался — отправим как plain text
+        bot.send_message(
+            message.chat.id,
+            output.replace('\\', '').replace('**', '').replace('`', '').replace('_', ''),
+            reply_markup=markup
+        )
+        log_error_crash(f"Ошибка отправки Markdown: {e}")
 #--------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -821,11 +900,51 @@ def check_incoming_delegations():
 
 
 
-#------------------------------------------------------------- Планировщик проверки файла с транзакциями ------------------------------------
+
+
+
+#------------------------------------------------ Обьединение в кластер ----------------------------------------------------------------
+def group_tasks_into_clusters(tasks: List[Dict], max_gap_minutes: int) -> List[List[Dict]]:
+    """
+    Группирует задачи в кластеры, где:
+      - задачи пересекаются, ИЛИ
+      - разрыв между концом одной и началом другой ≤ max_gap_minutes
+    
+    Возвращает список кластеров (списков задач), отсортированных по времени.
+    """
+    if not tasks:
+        return []
+
+    # Сортируем по schedule_time
+    sorted_tasks = sorted(tasks, key=lambda t: t["schedule_time"])
+    clusters = []
+    current_cluster = [sorted_tasks[0]]
+
+    for t in sorted_tasks[1:]:
+        last_in_cluster = current_cluster[-1]
+        # Разрыв = начало новой - конец последней в кластере
+        gap = (t["schedule_time"] - last_in_cluster["return_time"]).total_seconds() / 60  # в минутах
+
+        if gap <= max_gap_minutes and t["schedule_time"] <= last_in_cluster["return_time"] + timedelta(minutes=max_gap_minutes):
+            # Задача входит в текущий кластер (пересекается или близка)
+            current_cluster.append(t)
+        else:
+            # Новый кластер
+            clusters.append(current_cluster)
+            current_cluster = [t]
+
+    clusters.append(current_cluster)
+    return clusters
+# ---------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+#---------------------------------------------------------------- Работа с очередью ----------------------------------------------------
 def scheduler_worker():
     global MONITORING_ENABLED
-
-    from datetime import timedelta
 
     while True:
         try:
@@ -833,129 +952,119 @@ def scheduler_worker():
                 check_incoming_delegations()
 
             now = datetime.now(TZ_MOSCOW)
+#            log_work(f"[🕒 Текущее время: {now.strftime('%H:%M:%S')}]")
             tasks = load_scheduled_tasks()
             updated = False
 
-            # === 1. Оставляем только невыполненные задачи ===
-            active_tasks = [t for t in tasks if not t["executed"]]
-
-            if not active_tasks:
+            pending_tasks = [t for t in tasks if not t["executed"]]
+            if not pending_tasks:
                 time.sleep(30)
                 continue
 
-            # Сортируем по времени начала
-            active_tasks.sort(key=lambda x: x["schedule_time"])
+            # === 1. Группируем ВСЕ pending_tasks в кластеры ===
+            clusters = group_tasks_into_clusters(pending_tasks, max_gap_minutes=SLICE_MINUTES)
+            # Каждый кластер → {'start', 'end', 'tasks', 'delegated', 'returned'}
+            cluster_info = []
+            for cluster in clusters:
+                c_start = min(t["schedule_time"] for t in cluster)
+                c_end = max(t["return_time"] for t in cluster)
+                # Есть ли хоть одна делегированная и не возвращённая в кластере?
+                delegated_in_cluster = any(t["delegated"] and not t["returned"] for t in cluster)
+                returned_in_cluster = all(t["returned"] for t in cluster if t["delegated"])
+                cluster_info.append({
+                    "tasks": cluster,
+                    "start": c_start,
+                    "end": c_end,
+                    "delegated": delegated_in_cluster,
+                    "returned": returned_in_cluster,
+                })
 
-            # === 2. Строим мегадиапазон с учетом максимального разрыва ===
-            interval_start = active_tasks[0]["schedule_time"]
-            interval_end = active_tasks[0]["return_time"]
+#            ### ➕ DEBUG LOG ➕
+#            log_work(f"[DEBUG] Найдено кластеров: {len(cluster_info)}")
+#            for i, c in enumerate(cluster_info, 1):
+#                status = "🟢 активен и неделегирован" if (c["start"] <= now < c["end"] and not c["delegated"]) else \
+#                         "🟠 активен, делегирован" if (c["start"] <= now < c["end"] and c["delegated"]) else \
+#                         "🔴 завершён, ждёт возврата" if (now >= c["end"] and c["delegated"] and not c["returned"]) else \
+#                         "⚪ ожидает"
+#                log_work(f"  К{i}: {c['start'].strftime('%H:%M')}–{c['end'].strftime('%H:%M')} | задач: {len(c['tasks'])} | {status}")
+#            ### ➕ /DEBUG LOG ➕
 
-            for t in active_tasks[1:]:
-                start = t["schedule_time"]
-                end = t["return_time"]
 
-                # Проверяем, пересекаются ли задачи c допустимым разрывом
-                if start <= interval_end + timedelta(minutes=SLICE_MINUTES):
-                    # расширяем конец интервала, если нужно
-                    if end > interval_end:
-                        interval_end = end
-                else:
-                    break  # как только нашли разрыв больше allowed gap — останавливаем цепочку
-
-            # В этом месте мы имеем единый мегадиапазон:
-            # interval_start → interval_end
-
-            # Проверяем наличие активной делегации
-            active_delegate_exists = any(
-                t["delegated"] and not t["returned"] for t in tasks
-            )
-
-            # === 3. Если ещё не наступило время интервала — ждём ===
-            if now < interval_start:
-                time.sleep(30)
-                continue
-
-            # === 4. Если мы ВНУТРИ мегадиапазона → нужно делегировать ===
-            if interval_start <= now < interval_end:
-
-                if not active_delegate_exists:
-                    # Выполняем реальное делегирование
+            # === 2. Обрабатываем каждый кластер независимо ===
+            for c in cluster_info:
+                # Сценарий: сейчас внутри кластера, но делегации нет → делегировать
+                if c["start"] <= now < c["end"] and not c["delegated"]:
+                    # Делегируем ВЕСЬ кластер
                     trx_sun = get_max_delegatable_trx(main_wallet)
                     trx_amount = trx_sun // 1_000_000
 
                     if trx_amount > 0:
                         txid, ok = create_delegate_energy_txid(main_wallet, stashing_target, trx_amount)
                         if ok:
-                            txid_link = "https://tronscan.org/#/transaction/" + txid
+                            txid_link = f"https://tronscan.org/#/transaction/{txid}"
                             log_work(
-                                f"\n✅ Делегирование диапазона \n\nСтарт: {interval_start}\nСтоп: {interval_end}\n\n"
+                                f"\n✅ Делегирование кластера\n\n"
+                                f"Начало: {c['start']}\n"
+                                f"Конец:  {c['end']}\n\n"
+                                f"Задач: {len(c['tasks'])}\n\n"
                                 f"Делегировано: {trx_amount:,.2f} TRX\n\n"
                                 f"[TXID]({txid_link})"
                             )
-                            for t in active_tasks:
+                            for t in c["tasks"]:
                                 t["delegated"] = True
                                 t["txid_delegate"] = txid
-
                             updated = True
-                            active_delegate_exists = True
                         else:
-                            log_error_crash("❌ Ошибка делегирования.")
+                            log_error_crash("❌ Не удалось создать TX делегирования.")
                     else:
-                        log_work("⚠️ Делегировать нечего.")
-                        for t in active_tasks:
+                        log_work(f"⚠️ Делегировать нечего для кластера [{c['start']}–{c['end']}]")
+                        for t in c["tasks"]:
                             t["delegated"] = True
                         updated = True
-                else:
-                    # Делегация уже активна — просто отмечаем задачи
-                    for t in active_tasks:
-                        t["delegated"] = True
-                    updated = True
 
-            # === 5. Если наступил конец мегадиапазона → анделегируем ===
-            elif now >= interval_end:
-
-                if active_delegate_exists:
+                # Сценарий: время кластера истекло, но делегация есть и не возвращена → анделегировать
+                elif now >= c["end"] and c["delegated"] and not c["returned"]:
                     try:
-                        # Проверяем объем текущей делегации
                         url = f"https://apilist.tronscanapi.com/api/account/resourcev2?address={main_wallet}&type=2&resourceType=2"
                         headers = {"TRON-PRO-API-KEY": api_key_tronscan}
-                        resp = requests.get(url, headers=headers).json()
+                        data = requests.get(url, headers=headers, timeout=10).json()
 
                         amount_in_trx = 0
-                        for d in resp.get("data", []):
+                        for d in data.get("data", []):
                             if d.get("receiverAddress") == stashing_target:
                                 amount_in_trx = d.get("balance", 0) // 1_000_000
-                                break
 
                         if amount_in_trx > 0:
                             txid, ok = create_undelegate_energy_txid(main_wallet, stashing_target, amount_in_trx)
                             if ok:
-                                txid_link = "https://tronscan.org/#/transaction/" + txid
+                                txid_link = f"https://tronscan.org/#/transaction/{txid}"
                                 log_work(
-                                    f"\n✅ Анделегирование диапазона \n\nСтарт: {interval_start}\nСтоп: {interval_end}\n\n"
+                                    f"\n✅ Анделегирование кластера\n\n"
+                                    f"Начало: {c['start']}\n"
+                                    f"Конец:  {c['end']}\n\n"
+                                    f"Задач: {len(c['tasks'])}\n\n"
                                     f"Анделегировано: {amount_in_trx:,.2f} TRX\n\n"
                                     f"[TXID]({txid_link})"
                                 )
-                                for t in active_tasks:
+                                for t in c["tasks"]:
                                     t["returned"] = True
                                     t["txid_return"] = txid
                             else:
                                 log_error_crash("❌ Ошибка анделегирования.")
                         else:
-                            log_work("⚠️ Делегация отсутствует — возврат не нужен.")
-                            for t in active_tasks:
+                            log_work(f"⚠️ Делегация отсутствует для кластера [{c['start']}–{c['end']}]")
+                            for t in c["tasks"]:
                                 t["returned"] = True
 
+                        # Помечаем ВСЕ задачи кластера как выполненные
+                        for t in c["tasks"]:
+                            t["executed"] = True
                         updated = True
+
                     except Exception as e:
-                        log_error_crash(f"❌ Ошибка анделегирования: {e}")
+                        log_error_crash(f"❌ Ошибка анделегирования кластера: {e}")
 
-                # Помечаем ВСЕ задачи как выполненные
-                for t in active_tasks:
-                    t["executed"] = True
-                updated = True
-
-            # === 6. Сохраняем изменения ===
+            # === 3. Сохраняем изменения ===
             if updated:
                 save_scheduled_tasks(tasks)
 
