@@ -14,9 +14,7 @@ from datetime import datetime, timedelta, timezone
 # Часовой пояс UTC+3
 zone_time = int(os.getenv("zone_time"))
 TZ_MOSCOW = timezone(timedelta(hours=zone_time))
-
 last_check_time = datetime.min.replace(tzinfo=TZ_MOSCOW)
-CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES"))
 
 # Настройка логирования в начале файла (должна быть)
 logging.basicConfig(level=logging.INFO,
@@ -24,11 +22,12 @@ logging.basicConfig(level=logging.INFO,
 
 path_json_otl = "/app/scheduled_tasks.json"
 SETTINGS_PATH = "/app/bot_settings.json"
+
+
 # Инициализация флага (фактическое значение будет загружено из файла)
 MONITORING_ENABLED = False
 
 
-# ================== Настройки Telegram ==================
 # Получаем токен бота
 try:
     API_TOKEN = os.getenv("API_TOKEN")
@@ -49,7 +48,6 @@ except:
 
 
 
-# ================== Глобальные переменные из .env ==================
 try:
     api_key_tronscan = os.getenv("API_KEY_TRONSCAN")
     api_key_trongrid = os.getenv("API_KEY_TRONGRID")
@@ -57,6 +55,8 @@ try:
     PERM_ID = int(os.getenv("PERM_ID"))
     main_wallet = os.getenv("MAIN_WALLET")
     stashing_target = os.getenv("STASHING_TARGET")
+    CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES"))
+    SLICE_MINUTES = int(os.getenv("SLICE_MINUTES"))
     
     priv_key_my = PrivateKey(bytes.fromhex(priv_key_my_hex))
     
@@ -64,7 +64,10 @@ except Exception as e:
     logging.info(f"❌ Критическая ошибка: Не удалось загрузить все необходимые переменные из .env. Проверьте .env. Ошибка: {e}")
 
 
-# ================== Логирование ==================
+
+
+
+# ---------------------------------------------------- Логирование ----------------------------------------------------------------
 def log_error_crash(msg):
     # Используем standard logging (будет видно в Docker logs)
     logging.error(f" {msg}")
@@ -90,9 +93,14 @@ def log_work(msg):
         except telebot.apihelper.ApiTelegramException as e:
             # Используем standard logging для ошибки отправки
             logging.info(f"[ERROR] Could not send message to {admin_id}: {e}")
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
-# ================== Tron функции ==================
+
+
+
+
+#------------------------------------------ Tron функции ------------------------------------------------------------------
 # (Используют глобальные переменные api_key_trongrid, api_key_tronscan, PERM_ID, priv_key_my)
 
 def get_energy_info(addressEN):
@@ -175,9 +183,13 @@ def create_undelegate_energy_txid(addressEN, receiver_address_delegate_my, undel
     except Exception as e:
         log_error_crash(f"Ошибка отзыва делегации: {e}")
         return None, False
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
-# ================== Декоратор для проверки админов ==================
+
+
+
+#------------------------------------------- Декоратор для проверки админов ---------------------------------------------------
 def admin_only(func):
     def wrapper(message,*args,**kwargs):
         if message.from_user.id not in ADMIN_IDS:
@@ -185,8 +197,15 @@ def admin_only(func):
             return
         return func(message,*args,**kwargs)
     return wrapper
+#--------------------------------------------------------------------------------------------------------------------------------
 
-# ================== Клавиатура снизу ==================
+
+
+
+
+
+
+# ------------------------------------------ Клавиатура снизу ----------------------------------------------------------------
 def bottom_keyboard():
     # Флаг MONITORING_ENABLED должен быть доступен здесь как глобальный
     global MONITORING_ENABLED
@@ -210,10 +229,11 @@ def realtime_keyboard():
         types.KeyboardButton("⬅️ Назад")
     )
     return markup
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
-# ====================== Работа с файлом настроек ===================
+#---------------------------------------------- Работа с файлом настроек -------------------------------------------------
 def save_settings():
     """Сохраняет текущее состояние слежения в файл."""
     settings = {"monitoring_enabled": MONITORING_ENABLED}
@@ -235,11 +255,12 @@ def load_settings():
         # Если файл не найден или поврежден, устанавливаем по умолчанию и сохраняем
         MONITORING_ENABLED = False
         save_settings()
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
 
-# =========================== Переключение кнопки слежения ===================
+#-------------------------------- Переключение кнопки автослежения -------------------------------------------------------------
 @bot.message_handler(func=lambda m: m.text.startswith("Автослежение"))
 @admin_only
 def toggle_monitoring(message):
@@ -260,11 +281,12 @@ def toggle_monitoring(message):
         reply_markup=bottom_keyboard(), # Обновляем клавиатуру, чтобы показать новый статус
         parse_mode='Markdown'
     )
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
 
-# ================== Telegram обработчики ==================
+# ------------------------------- Telegram обработчики /start ------------------------------------------------------------
 @bot.message_handler(commands=["start"])
 @admin_only
 def start_bot_message(message):
@@ -276,9 +298,14 @@ def start_bot_message(message):
     )
 
     bot.send_message(message.chat.id, text, reply_markup=bottom_keyboard(), parse_mode='Markdown')
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
+
+
+
+#-------------------------------------------------- КНОПКИ!------------------------------------------------------------------------------
 # ================== Логика "Спрятать" (Делегирование) ==================
 @bot.message_handler(func=lambda m: m.text=="Спрятать 📤")
 @admin_only
@@ -388,9 +415,14 @@ def go_back_to_main(message):
         "🤖 Возврат к основному меню.",
         reply_markup=bottom_keyboard()
     )
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
-# Функции обработки очереди
+
+
+
+
+#---------------------------------------------Работа с задачами в очереди ---------------------------------------------------------------
 def load_scheduled_tasks():
     try:
         with open(path_json_otl, "r", encoding="utf-8") as f:
@@ -416,10 +448,13 @@ def save_scheduled_tasks(tasks):
         serializable.append(t)
     with open(path_json_otl, "w", encoding="utf-8") as f:
         json.dump(serializable, f, indent=2, ensure_ascii=False)
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
 
+
+#------------------------------------------ Обработчик кнопки отложить --------------------------------------------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "Отложить ⏳")
 @admin_only
 def delayed_stash_start(message):
@@ -476,8 +511,6 @@ def delayed_stash_step2(message, schedule_time):
         return
 
 
-
-# Принимает 4 аргумента: message, schedule_time, return_time, hold_minutes
 def delayed_stash_step3(message, schedule_time, return_time, hold_minutes): 
     
     # 1. Обрабатываем ввод TXID
@@ -522,14 +555,6 @@ def delayed_stash_step3(message, schedule_time, return_time, hold_minutes):
     )
 
 
-
-
-
-
-
-
-
-
 def _send_tasks_list_message(message):
     tasks = load_scheduled_tasks()
     
@@ -559,7 +584,7 @@ def _send_tasks_list_message(message):
         
         output += (
             f"**Задача #{i+1}**{status}\n"
-            f"**ID транзакции (TXID):** `{txid_value}`\n"
+            f"**TXID:** `{txid_value}`\n"
             f"Делегировать в: `{schedule_time_str}`\n"
             f"Вернуть в: `{return_time_str}`\n"
             "----\n"
@@ -568,19 +593,24 @@ def _send_tasks_list_message(message):
     markup.add(types.InlineKeyboardButton("🗑️ Удалить ВСЕ активные", callback_data="confirm_delete_all_tasks"))
 
     bot.send_message(message.chat.id, output, reply_markup=markup, parse_mode='Markdown')
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
-# Обработчик кнопки, вызывающий вспомогательную функцию (С ДЕКОРАТОРОМ)
+
+
+
+#----------------------------------- Обработчик кнопки, вызывающий вспомогательную функцию (С ДЕКОРАТОРОМ)-----------------------------
 @bot.message_handler(func=lambda m: m.text == "Показать Отложки 📋")
 @admin_only
 def show_delayed_tasks(message):
     _send_tasks_list_message(message)
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
 
-# Обработчик кнопки (С ДЕКОРАТОРОМ)
+#-------------------------------------------- Обработчик кнопки удалить отложки (С ДЕКОРАТОРОМ) -------------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "Удалить Отложки ❌")
 @admin_only
 def delete_all_delayed_tasks_confirm(message):
@@ -604,7 +634,6 @@ def delete_all_delayed_tasks_confirm(message):
         reply_markup=markup,
         parse_mode='Markdown'
     )
-
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('delete_task_') or call.data in ["confirm_delete_all_tasks", "cancel"])
@@ -678,11 +707,14 @@ def callback_inline(call):
         except Exception as e:
             log_error_crash(f"Ошибка при удалении задачи: {e}")
             bot.send_message(chat_id, "❌ Произошла ошибка удаления.")
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
 
-# ================== Новая функция отслеживания ==================
+
+
+#------------------------------------- функция отслеживания на входящие делегации ----------------------------------------------------
 def check_incoming_delegations():
     """Проверяет последние транзакции на предмет входящих делегаций энергии."""
     global last_check_time # Обязательно указываем, что работаем с глобальной переменной
@@ -783,97 +815,167 @@ def check_incoming_delegations():
     # 5. Сохранение задач
     if new_tasks_added:
         save_scheduled_tasks(tasks)
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
 
-
+#------------------------------------------------------------- Планировщик проверки файла с транзакциями ------------------------------------
 def scheduler_worker():
     global MONITORING_ENABLED
+
+    from datetime import timedelta
+
     while True:
         try:
-            # 💡 ПРОВЕРКА ФЛАГА ПЕРЕД ВЫПОЛНЕНИЕМ
             if MONITORING_ENABLED:
-                check_incoming_delegations() # проверяем, есть ли входящие делегации
+                check_incoming_delegations()
 
             now = datetime.now(TZ_MOSCOW)
             tasks = load_scheduled_tasks()
             updated = False
 
-            for task in tasks:
-                if not task["executed"]:
-                    # Этап 1: делегировать?
-                    if not task["delegated"] and now >= task["schedule_time"]:
-                        log_work("⏳ Выполняется отложенное делегирование...")
-                        # Получаем макс TRX
-                        trx_deleg_max_sun = get_max_delegatable_trx(main_wallet)
-                        if trx_deleg_max_sun > 0:
-                            trx_to_delegate = int(trx_deleg_max_sun / 1_000_000)
-                            txid, ok = create_delegate_energy_txid(main_wallet, stashing_target, trx_to_delegate)
-                            if ok:
-                                txid_link = "https://tronscan.org/#/transaction/" + txid
-                                task["delegated"] = True
-                                task["txid_delegate"] = txid
-                                log_work(f"✅ Отложенное делегирование выполнено!\n"
-                                         f"Делегировано: {trx_to_delegate:,.2f} TRX\n"
-                                         f"[Ссылка на транзакцию]({txid_link})")
-                            else:
-                                log_error_crash("❌ Отложенное делегирование не удалось!")
-                        else:
-                            log_work("⚠️ Отложенное делегирование: нечего делегировать.")
-                        updated = True
+            # === 1. Оставляем только невыполненные задачи ===
+            active_tasks = [t for t in tasks if not t["executed"]]
 
-                    # Этап 2: вернуть?
-                    if task["delegated"] and not task["returned"] and now >= task["return_time"]:
-                        log_work("⏳ Выполняется отложенный возврат энергии...")
-                        # Получаем текущую делегацию
+            if not active_tasks:
+                time.sleep(30)
+                continue
+
+            # Сортируем по времени начала
+            active_tasks.sort(key=lambda x: x["schedule_time"])
+
+            # === 2. Строим мегадиапазон с учетом максимального разрыва ===
+            interval_start = active_tasks[0]["schedule_time"]
+            interval_end = active_tasks[0]["return_time"]
+
+            for t in active_tasks[1:]:
+                start = t["schedule_time"]
+                end = t["return_time"]
+
+                # Проверяем, пересекаются ли задачи c допустимым разрывом
+                if start <= interval_end + timedelta(minutes=SLICE_MINUTES):
+                    # расширяем конец интервала, если нужно
+                    if end > interval_end:
+                        interval_end = end
+                else:
+                    break  # как только нашли разрыв больше allowed gap — останавливаем цепочку
+
+            # В этом месте мы имеем единый мегадиапазон:
+            # interval_start → interval_end
+
+            # Проверяем наличие активной делегации
+            active_delegate_exists = any(
+                t["delegated"] and not t["returned"] for t in tasks
+            )
+
+            # === 3. Если ещё не наступило время интервала — ждём ===
+            if now < interval_start:
+                time.sleep(30)
+                continue
+
+            # === 4. Если мы ВНУТРИ мегадиапазона → нужно делегировать ===
+            if interval_start <= now < interval_end:
+
+                if not active_delegate_exists:
+                    # Выполняем реальное делегирование
+                    trx_sun = get_max_delegatable_trx(main_wallet)
+                    trx_amount = trx_sun // 1_000_000
+
+                    if trx_amount > 0:
+                        txid, ok = create_delegate_energy_txid(main_wallet, stashing_target, trx_amount)
+                        if ok:
+                            txid_link = "https://tronscan.org/#/transaction/" + txid
+                            log_work(
+                                f"\n✅ Делегирование диапазона \n\nСтарт: {interval_start}\nСтоп: {interval_end}\n\n"
+                                f"Делегировано: {trx_amount:,.2f} TRX\n\n"
+                                f"[TXID]({txid_link})"
+                            )
+                            for t in active_tasks:
+                                t["delegated"] = True
+                                t["txid_delegate"] = txid
+
+                            updated = True
+                            active_delegate_exists = True
+                        else:
+                            log_error_crash("❌ Ошибка делегирования.")
+                    else:
+                        log_work("⚠️ Делегировать нечего.")
+                        for t in active_tasks:
+                            t["delegated"] = True
+                        updated = True
+                else:
+                    # Делегация уже активна — просто отмечаем задачи
+                    for t in active_tasks:
+                        t["delegated"] = True
+                    updated = True
+
+            # === 5. Если наступил конец мегадиапазона → анделегируем ===
+            elif now >= interval_end:
+
+                if active_delegate_exists:
+                    try:
+                        # Проверяем объем текущей делегации
                         url = f"https://apilist.tronscanapi.com/api/account/resourcev2?address={main_wallet}&type=2&resourceType=2"
                         headers = {"TRON-PRO-API-KEY": api_key_tronscan}
-                        try:
-                            resp = requests.get(url, headers=headers)
-                            data = resp.json()
-                            amount_in_trx = 0
-                            for d in data.get("data", []):
-                                if d.get("receiverAddress") == stashing_target:
-                                    amount_in_trx = int(d.get("balance", 0) / 1_000_000)
-                                    break
-                            if amount_in_trx > 0:
-                                txid, ok = create_undelegate_energy_txid(main_wallet, stashing_target, amount_in_trx)
-                                if ok:
-                                    txid_link = "https://tronscan.org/#/transaction/" + txid
-                                    task["returned"] = True
-                                    task["txid_return"] = txid
-                                    log_work(f"✅ Отложенный возврат выполнен!\n"
-                                             f"Анделегировано: {trx_to_delegate:,.2f} TRX\n"
-                                             f"[Ссылка на транзакцию]({txid_link})")
-                                else:
-                                    log_error_crash("❌ Отложенный возврат не удался!")
+                        resp = requests.get(url, headers=headers).json()
+
+                        amount_in_trx = 0
+                        for d in resp.get("data", []):
+                            if d.get("receiverAddress") == stashing_target:
+                                amount_in_trx = d.get("balance", 0) // 1_000_000
+                                break
+
+                        if amount_in_trx > 0:
+                            txid, ok = create_undelegate_energy_txid(main_wallet, stashing_target, amount_in_trx)
+                            if ok:
+                                txid_link = "https://tronscan.org/#/transaction/" + txid
+                                log_work(
+                                    f"\n✅ Анделегирование диапазона \n\nСтарт: {interval_start}\nСтоп: {interval_end}\n\n"
+                                    f"Анделегировано: {amount_in_trx:,.2f} TRX\n\n"
+                                    f"[TXID]({txid_link})"
+                                )
+                                for t in active_tasks:
+                                    t["returned"] = True
+                                    t["txid_return"] = txid
                             else:
-                                log_work("⚠️ Отложенный возврат: делегация уже отсутствует.")
-                        except Exception as e:
-                            log_error_crash(f"❌ Ошибка при отложенном возврате: {e}")
+                                log_error_crash("❌ Ошибка анделегирования.")
+                        else:
+                            log_work("⚠️ Делегация отсутствует — возврат не нужен.")
+                            for t in active_tasks:
+                                t["returned"] = True
+
                         updated = True
+                    except Exception as e:
+                        log_error_crash(f"❌ Ошибка анделегирования: {e}")
 
-                    # Завершить задачу
-                    if task["delegated"] and task["returned"]:
-                        task["executed"] = True
+                # Помечаем ВСЕ задачи как выполненные
+                for t in active_tasks:
+                    t["executed"] = True
+                updated = True
 
+            # === 6. Сохраняем изменения ===
             if updated:
                 save_scheduled_tasks(tasks)
 
         except Exception as e:
             log_error_crash(f"❌ Ошибка в scheduler_worker: {e}")
 
-        time.sleep(30)  # Проверка каждые 30 секунд
-		
+        time.sleep(30)
+#--------------------------------------------------------------------------------------------------------------------------------
 
 
 
+#------------------------------------ загрузка ------------------------------------------------------------------------------------
 load_settings() # загружаем кнопку настроек слежения
 scheduler_thread = threading.Thread(target=scheduler_worker, daemon=True)
 scheduler_thread.start()
+#--------------------------------------------------------------------------------------------------------------------------------
 
-# === Запуск бота ===
+
+
+
+# ------------------------------------------------- Запуск бота --------------------------------------------------------------------
 logging.info("Бот запущен...")
 
 while True:
@@ -886,3 +988,4 @@ while True:
         logging.info(f"*** КРИТИЧЕСКАЯ ОШИБКА ВНЕ ПОЛЛИНГА: {e} ***")
         # Ждём перед попыткой перезапуска
         time.sleep(15)
+#--------------------------------------------------------------------------------------------------------------------------------
